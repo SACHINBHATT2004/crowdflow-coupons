@@ -1947,7 +1947,7 @@
       div.innerHTML = `
         <span class="letter">${counter}</span>
         <span class="number">${number}</span>
-        <span class="full-code">${counter}${number}</span>
+        <span class="full-code">${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</span>
       `;
       return div;
     }
@@ -2281,7 +2281,7 @@
 
         pdf.setTextColor(85,85,85);
         pdf.setFontSize(8);
-        pdf.text(`${record.counter}${number}`, x + couponW - 2, y + couponH - 2.3, { align: "right" });
+        const issued=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); pdf.text(issued, x + couponW - 2, y + couponH - 2.3, { align: "right" });
         number++;
       }
 

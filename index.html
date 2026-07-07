@@ -1161,6 +1161,22 @@
     }
 
 
+
+    .delete-counter-btn {
+      margin-left: 6px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--red), #ef4444);
+      border: 0;
+      box-shadow: 0 10px 22px rgba(225,29,72,.16);
+    }
+
+    .counter-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
     .add-counter-form {
       display: flex;
       align-items: center;
@@ -1186,7 +1202,23 @@
     }
 
     @media (max-width: 760px) {
-      .add-counter-form {
+  
+    .delete-counter-btn {
+      margin-left: 6px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--red), #ef4444);
+      border: 0;
+      box-shadow: 0 10px 22px rgba(225,29,72,.16);
+    }
+
+    .counter-actions {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .add-counter-form {
         width: 100%;
         min-width: 0;
       }
@@ -1463,12 +1495,13 @@
     };
 
     const DEFAULT_COUNTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-    const CUSTOM_COUNTERS_KEY = "coupon_custom_counters_v7_dynamic";
+    const CUSTOM_COUNTERS_KEY = "coupon_custom_counters_v8_delete";
+    const DELETED_COUNTERS_KEY = "coupon_deleted_counters_v8_delete";
     let COUNTERS = loadCounters();
     const COUPONS_PER_PAGE = 27;
-    const HISTORY_KEY = "coupon_generation_history_v7_dynamic";
-    const STATS_KEY = "coupon_lifetime_stats_v7_dynamic";
-    const THEME_KEY = "coupon_premium_theme_v7";
+    const HISTORY_KEY = "coupon_generation_history_v8_delete";
+    const STATS_KEY = "coupon_lifetime_stats_v8_delete";
+    const THEME_KEY = "coupon_premium_theme_v8";
 
     let currentUser = null;
     let selectedCounter = "A";
@@ -1572,8 +1605,22 @@
       }
     }
 
+    function getDeletedCounters() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(DELETED_COUNTERS_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveDeletedCounters(deletedCounters) {
+      localStorage.setItem(DELETED_COUNTERS_KEY, JSON.stringify(uniqueCounters(deletedCounters)));
+    }
+
     function loadCounters() {
-      return uniqueCounters([...DEFAULT_COUNTERS, ...getCustomCounters()]);
+      const deleted = new Set(uniqueCounters(getDeletedCounters()));
+      return uniqueCounters([...DEFAULT_COUNTERS, ...getCustomCounters()]).filter(counter => !deleted.has(counter));
     }
 
     function saveCustomCounters(customCounters) {
@@ -1631,8 +1678,9 @@
         <div class="counter-card ${counter === selectedCounter ? "active" : ""}" data-counter="${counter}" style="${counterStyle(counter)}">
           <strong>${counter}</strong>
           <span>Counter ${counter}</span>
-          <div class="card-bottom">
+          <div class="card-bottom counter-actions">
             <button class="btn light small history-open" data-history-counter="${counter}" type="button">History</button>
+            <button class="btn small delete-counter-btn" data-delete-counter="${counter}" type="button">Delete</button>
           </div>
         </div>
       `).join("");
@@ -1655,6 +1703,10 @@
       const custom = getCustomCounters();
       custom.push(normalized);
       saveCustomCounters(custom);
+
+      const deleted = getDeletedCounters().filter(c => c !== normalized);
+      saveDeletedCounters(deleted);
+
       refreshCounters();
       setSelectedCounter(normalized);
 
@@ -1663,11 +1715,64 @@
       counterNameInput.value = "";
     }
 
+    function deleteCounter(counter) {
+      if (!currentUser || currentUser.role !== "admin") {
+        alert("Only admin can delete counters.");
+        return;
+      }
+
+      const normalized = normalizeCounterName(counter);
+      if (!COUNTERS.includes(normalized)) {
+        alert(`Counter ${normalized} not found.`);
+        return;
+      }
+
+      if (COUNTERS.length <= 1) {
+        alert("At least one counter must remain.");
+        return;
+      }
+
+      const ok = confirm(`Delete Counter ${normalized}? Its history, stats, downloads and next number will also be removed.`);
+      if (!ok) return;
+
+      const finalOk = confirm(`Final confirmation: Counter ${normalized} will be removed.`);
+      if (!finalOk) return;
+
+      const custom = getCustomCounters().filter(c => c !== normalized);
+      saveCustomCounters(custom);
+
+      const deleted = getDeletedCounters();
+      if (!deleted.includes(normalized)) deleted.push(normalized);
+      saveDeletedCounters(deleted);
+
+      saveHistory(getHistory().filter(r => r.counter !== normalized));
+
+      const stats = getStats();
+      delete stats[normalized];
+      saveStats(stats);
+
+      localStorage.removeItem(storageKey(normalized));
+
+      COUNTERS = loadCounters();
+
+      if (selectedCounter === normalized) {
+        selectedCounter = COUNTERS[0] || "A";
+      }
+
+      closeHistory();
+      clearPreview(false);
+      refreshCounters();
+      setSelectedCounter(selectedCounter);
+
+      statusBox.style.display = "block";
+      statusBox.textContent = `Counter ${normalized} deleted.`;
+    }
+
     themeToggle.addEventListener("click", () => {
       applyTheme(document.body.classList.contains("dark") ? "light" : "dark");
     });
 
-    function storageKey(counter) { return "coupon_next_number_v7_dynamic_" + counter; }
+    function storageKey(counter) { return "coupon_next_number_v8_delete_" + counter; }
 
     function getNextNumber(counter) {
       const saved = Number(localStorage.getItem(storageKey(counter)));
@@ -1889,7 +1994,8 @@
           key.startsWith("coupon_generation_history") ||
           key.startsWith("coupon_lifetime_stats") ||
           key.startsWith("coupon_next_number") ||
-          key.startsWith("coupon_custom_counters")
+          key.startsWith("coupon_custom_counters") ||
+          key.startsWith("coupon_deleted_counters")
         ) {
           localStorage.removeItem(key);
         }
@@ -2041,7 +2147,8 @@
           event.key.startsWith("coupon_generation_history") ||
           event.key.startsWith("coupon_lifetime_stats") ||
           event.key.startsWith("coupon_next_number") ||
-          event.key.startsWith("coupon_custom_counters")
+          event.key.startsWith("coupon_custom_counters") ||
+          event.key.startsWith("coupon_deleted_counters")
         )
       ) {
         syncSelectedCounterFromStorage(false);
@@ -2049,7 +2156,7 @@
     });
 
     counterGrid.addEventListener("click", e => {
-      if (e.target.closest(".history-open")) return;
+      if (e.target.closest(".history-open") || e.target.closest(".delete-counter-btn")) return;
       const card = e.target.closest(".counter-card");
       if (!card) return;
       setSelectedCounter(card.dataset.counter);
@@ -2061,6 +2168,14 @@
         e.preventDefault();
         e.stopPropagation();
         openHistory(historyOpen.dataset.historyCounter);
+      }
+
+      const deleteCounterBtn = e.target.closest("[data-delete-counter]");
+      if (deleteCounterBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteCounter(deleteCounterBtn.dataset.deleteCounter);
+        return;
       }
 
       const downloadRow = e.target.closest("[data-download-record]");

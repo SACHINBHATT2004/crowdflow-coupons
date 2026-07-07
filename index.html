@@ -1160,6 +1160,41 @@
       }
     }
 
+
+    .add-counter-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 260px;
+    }
+
+    .add-counter-form input {
+      height: 40px;
+      padding: 9px 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .module-grid,
+    .admin-grid {
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    .counter-card strong {
+      word-break: break-word;
+    }
+
+    @media (max-width: 760px) {
+      .add-counter-form {
+        width: 100%;
+        min-width: 0;
+      }
+      .add-counter-form input {
+        flex: 1;
+      }
+    }
+
     @media (max-width: 1040px) {
       .admin-grid,
       .module-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1317,40 +1352,16 @@
             <div class="section-head">
               <div>
                 <h2>Counter Modules</h2>
-                <p>Select counter or open history.</p>
+                <p>A to J ready. Admin can add more counters anytime.</p>
               </div>
+
+              <form id="addCounterForm" class="add-counter-form">
+                <input id="counterNameInput" type="text" maxlength="3" placeholder="New counter" />
+                <button class="btn small" type="submit">Add</button>
+              </form>
             </div>
 
-            <div id="counterGrid" class="module-grid">
-              <div class="counter-card active" data-counter="A">
-                <strong>A</strong>
-                <span>Counter A</span>
-                <div class="card-bottom">
-                  <button class="btn light small history-open" data-history-counter="A" type="button">History</button>
-                </div>
-              </div>
-              <div class="counter-card" data-counter="B">
-                <strong>B</strong>
-                <span>Counter B</span>
-                <div class="card-bottom">
-                  <button class="btn light small history-open" data-history-counter="B" type="button">History</button>
-                </div>
-              </div>
-              <div class="counter-card" data-counter="C">
-                <strong>C</strong>
-                <span>Counter C</span>
-                <div class="card-bottom">
-                  <button class="btn light small history-open" data-history-counter="C" type="button">History</button>
-                </div>
-              </div>
-              <div class="counter-card" data-counter="D">
-                <strong>D</strong>
-                <span>Counter D</span>
-                <div class="card-bottom">
-                  <button class="btn light small history-open" data-history-counter="D" type="button">History</button>
-                </div>
-              </div>
-            </div>
+            <div id="counterGrid" class="module-grid"></div>
           </div>
         </section>
 
@@ -1442,14 +1453,22 @@
       b: { password: "B@123", role: "counter", counter: "B" },
       c: { password: "C@123", role: "counter", counter: "C" },
       d: { password: "D@123", role: "counter", counter: "D" },
+      e: { password: "E@123", role: "counter", counter: "E" },
+      f: { password: "F@123", role: "counter", counter: "F" },
+      g: { password: "G@123", role: "counter", counter: "G" },
+      h: { password: "H@123", role: "counter", counter: "H" },
+      i: { password: "I@123", role: "counter", counter: "I" },
+      j: { password: "J@123", role: "counter", counter: "J" },
       admin: { password: "admin@123", role: "admin", counter: null }
     };
 
-    const COUNTERS = ["A", "B", "C", "D"];
+    const DEFAULT_COUNTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    const CUSTOM_COUNTERS_KEY = "coupon_custom_counters_v7_dynamic";
+    let COUNTERS = loadCounters();
     const COUPONS_PER_PAGE = 27;
-    const HISTORY_KEY = "coupon_generation_history_v4_fresh";
-    const STATS_KEY = "coupon_lifetime_stats_v4_fresh";
-    const THEME_KEY = "coupon_premium_theme_v4";
+    const HISTORY_KEY = "coupon_generation_history_v7_dynamic";
+    const STATS_KEY = "coupon_lifetime_stats_v7_dynamic";
+    const THEME_KEY = "coupon_premium_theme_v7";
 
     let currentUser = null;
     let selectedCounter = "A";
@@ -1473,6 +1492,8 @@
     const adminSection = $("adminSection");
     const counterGrid = $("counterGrid");
     const adminStats = $("adminStats");
+    const addCounterForm = $("addCounterForm");
+    const counterNameInput = $("counterNameInput");
     const adminDangerZone = $("adminDangerZone");
     const adminMasterClearBtn = $("adminMasterClearBtn");
     const heroStrip = $("heroStrip");
@@ -1521,11 +1542,132 @@
     // v3 fresh start: this version uses new storage keys,
     // so previous demo history/stats/next numbers do not appear.
 
+
+    function normalizeCounterName(value) {
+      return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 3);
+    }
+
+    function uniqueCounters(list) {
+      const seen = new Set();
+      return list
+        .map(normalizeCounterName)
+        .filter(Boolean)
+        .filter(counter => {
+          if (seen.has(counter)) return false;
+          seen.add(counter);
+          return true;
+        });
+    }
+
+    function getCustomCounters() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(CUSTOM_COUNTERS_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function loadCounters() {
+      return uniqueCounters([...DEFAULT_COUNTERS, ...getCustomCounters()]);
+    }
+
+    function saveCustomCounters(customCounters) {
+      localStorage.setItem(CUSTOM_COUNTERS_KEY, JSON.stringify(uniqueCounters(customCounters)));
+    }
+
+    function refreshCounters() {
+      COUNTERS = loadCounters();
+      renderCounterGrid();
+      updateAdminStats();
+      updateHero();
+    }
+
+    function getLoginUser(username, password) {
+      const key = String(username || "").trim().toLowerCase();
+
+      if (USERS[key] && USERS[key].password === password) {
+        return USERS[key];
+      }
+
+      const counter = COUNTERS.find(c => c.toLowerCase() === key);
+      if (counter && password === `${counter}@123`) {
+        return { password: `${counter}@123`, role: "counter", counter };
+      }
+
+      return null;
+    }
+
+    function getCounterColors(counter) {
+      const palette = [
+        ["#2d7dff", "#06b6d4"],
+        ["#7c3aed", "#ec4899"],
+        ["#10b981", "#0ea5e9"],
+        ["#ff8a3d", "#ef4444"],
+        ["#f59e0b", "#ef4444"],
+        ["#14b8a6", "#22c55e"],
+        ["#6366f1", "#8b5cf6"],
+        ["#0ea5e9", "#2dd4bf"],
+        ["#eab308", "#f97316"],
+        ["#ec4899", "#f43f5e"]
+      ];
+      const index = Math.abs(String(counter).split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0)) % palette.length;
+      return palette[index];
+    }
+
+    function counterStyle(counter) {
+      const [a, b] = getCounterColors(counter);
+      return `--card-a:${a};--card-b:${b};`;
+    }
+
+    function renderCounterGrid() {
+      if (!counterGrid) return;
+
+      counterGrid.innerHTML = COUNTERS.map(counter => `
+        <div class="counter-card ${counter === selectedCounter ? "active" : ""}" data-counter="${counter}" style="${counterStyle(counter)}">
+          <strong>${counter}</strong>
+          <span>Counter ${counter}</span>
+          <div class="card-bottom">
+            <button class="btn light small history-open" data-history-counter="${counter}" type="button">History</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function addAdminCounter(counter) {
+      const normalized = normalizeCounterName(counter);
+
+      if (!normalized) {
+        alert("Enter a counter name. Example: K");
+        return;
+      }
+
+      const current = loadCounters();
+      if (current.includes(normalized)) {
+        alert(`Counter ${normalized} already exists.`);
+        return;
+      }
+
+      const custom = getCustomCounters();
+      custom.push(normalized);
+      saveCustomCounters(custom);
+      refreshCounters();
+      setSelectedCounter(normalized);
+
+      statusBox.style.display = "block";
+      statusBox.textContent = `Counter ${normalized} added. Login: ${normalized.toLowerCase()} / ${normalized}@123`;
+      counterNameInput.value = "";
+    }
+
     themeToggle.addEventListener("click", () => {
       applyTheme(document.body.classList.contains("dark") ? "light" : "dark");
     });
 
-    function storageKey(counter) { return "coupon_next_number_v4_fresh_" + counter; }
+    function storageKey(counter) { return "coupon_next_number_v7_dynamic_" + counter; }
 
     function getNextNumber(counter) {
       const saved = Number(localStorage.getItem(storageKey(counter)));
@@ -1709,12 +1851,12 @@
       const counter = currentUser.role === "admin" ? selectedCounter : currentUser.counter;
       selectedCounter = counter;
 
-      generatorHeading.textContent = `Counter ${counter}`;
-      counterBadge.textContent = counter;
-      startNumber.value = getNextNumber(counter);
+      generatorHeading.textContent = `Counter ${selectedCounter}`;
+      counterBadge.textContent = selectedCounter;
+      startNumber.value = getNextNumber(selectedCounter);
 
       document.querySelectorAll(".counter-card").forEach(card => {
-        card.classList.toggle("active", card.dataset.counter === counter);
+        card.classList.toggle("active", card.dataset.counter === selectedCounter);
       });
 
       updateAdminStats();
@@ -1746,7 +1888,8 @@
         if (
           key.startsWith("coupon_generation_history") ||
           key.startsWith("coupon_lifetime_stats") ||
-          key.startsWith("coupon_next_number")
+          key.startsWith("coupon_next_number") ||
+          key.startsWith("coupon_custom_counters")
         ) {
           localStorage.removeItem(key);
         }
@@ -1756,12 +1899,14 @@
       currentCouponRecord = null;
       closeHistory();
       clearPreview(false);
-      setSelectedCounter("A");
+      COUNTERS = loadCounters();
+      renderCounterGrid();
+      setSelectedCounter(COUNTERS[0] || "A");
       updateAdminStats();
       updateHero();
 
       statusBox.style.display = "block";
-      statusBox.textContent = "All website data has been reset. Counters A, B, C and D will start from 1.";
+      statusBox.textContent = "All website data has been reset. All counters will start from 1.";
     }
 
     function updateAdminStats() {
@@ -1774,7 +1919,7 @@
         const entries = getCounterHistory(counter).length;
 
         return `
-          <div class="stat-card" data-counter="${counter}">
+          <div class="stat-card" data-counter="${counter}" style="${counterStyle(counter)}">
             <div class="stat-top">
               <div>
                 <h3>Counter ${counter}</h3>
@@ -1797,23 +1942,19 @@
     }
 
     function setSelectedCounter(counter) {
-      selectedCounter = counter;
-      const colorMap = {
-        A: ["#2d7dff", "#06b6d4"],
-        B: ["#7c3aed", "#ec4899"],
-        C: ["#10b981", "#0ea5e9"],
-        D: ["#ff8a3d", "#ef4444"]
-      };
-      generatorCard.style.setProperty("--active-a", colorMap[counter][0]);
-      generatorCard.style.setProperty("--active-b", colorMap[counter][1]);
+      selectedCounter = normalizeCounterName(counter) || "A";
+      const colors = getCounterColors(selectedCounter);
+      generatorCard.style.setProperty("--active-a", colors[0]);
+      generatorCard.style.setProperty("--active-b", colors[1]);
 
-      generatorHeading.textContent = `Counter ${counter}`;
-      counterBadge.textContent = counter;
-      startNumber.value = getNextNumber(counter);
+      generatorHeading.textContent = `Counter ${selectedCounter}`;
+      counterBadge.textContent = selectedCounter;
+      startNumber.value = getNextNumber(selectedCounter);
       clearPreview(false);
+      renderCounterGrid();
 
       document.querySelectorAll(".counter-card").forEach(card => {
-        card.classList.toggle("active", card.dataset.counter === counter);
+        card.classList.toggle("active", card.dataset.counter === selectedCounter);
       });
 
       updateHero();
@@ -1831,11 +1972,12 @@
         if (adminDangerZone) adminDangerZone.style.display = "flex";
         roleText.textContent = "Admin panel";
         loggedInPill.textContent = "admin";
-        updateAdminStats();
-        setSelectedCounter("A");
+        refreshCounters();
+        setSelectedCounter(COUNTERS[0] || "A");
       } else {
         adminSection.style.display = "none";
         if (adminDangerZone) adminDangerZone.style.display = "none";
+        refreshCounters();
         roleText.textContent = `Counter ${user.counter} panel`;
         loggedInPill.textContent = `counter ${user.counter}`;
         setSelectedCounter(user.counter);
@@ -1863,7 +2005,7 @@
       e.preventDefault();
       const username = usernameInput.value.trim().toLowerCase();
       const password = passwordInput.value.trim();
-      const user = USERS[username];
+      const user = getLoginUser(username, password);
 
       if (!user || user.password !== password) {
         loginError.style.display = "block";
@@ -1877,11 +2019,19 @@
     logoutBtn.addEventListener("click", logout);
 
     refreshBtn.addEventListener("click", () => {
+      refreshCounters();
       syncSelectedCounterFromStorage(true);
     });
 
     if (adminMasterClearBtn) {
       adminMasterClearBtn.addEventListener("click", clearAllWebsiteData);
+    }
+
+    if (addCounterForm) {
+      addCounterForm.addEventListener("submit", e => {
+        e.preventDefault();
+        addAdminCounter(counterNameInput.value);
+      });
     }
 
     window.addEventListener("storage", event => {
@@ -1890,7 +2040,8 @@
         (
           event.key.startsWith("coupon_generation_history") ||
           event.key.startsWith("coupon_lifetime_stats") ||
-          event.key.startsWith("coupon_next_number")
+          event.key.startsWith("coupon_next_number") ||
+          event.key.startsWith("coupon_custom_counters")
         )
       ) {
         syncSelectedCounterFromStorage(false);
@@ -2352,6 +2503,7 @@
     }
 
     initTheme();
+    renderCounterGrid();
     logout();
   </script>
 </body>
